@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#4f46e5">
+  <title>Expense Tracker</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="app">
+
+    <header class="top">
+      <h1>Expense Tracker</h1>
+      <div class="month-picker">
+        <input type="month" id="monthFilter" aria-label="Filter by month">
+        <button type="button" id="allTimeBtn" class="btn-ghost">All time</button>
+      </div>
+    </header>
+
+    <!-- Summary cards -->
+    <section class="cards">
+      <div class="card income">
+        <span class="label">Income</span>
+        <strong id="totalIncome">₹0.00</strong>
+      </div>
+      <div class="card expense">
+        <span class="label">Expenses</span>
+        <strong id="totalExpense">₹0.00</strong>
+      </div>
+      <div class="card balance">
+        <span class="label">Balance</span>
+        <strong id="balance">₹0.00</strong>
+      </div>
+    </section>
+
+    <!-- Monthly budget -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Monthly budget</h2>
+        <form id="budgetForm" class="inline-form">
+          <input type="number" id="budgetInput" min="0" step="1" placeholder="Set budget (₹)" aria-label="Monthly budget">
+          <button type="submit" class="btn-ghost">Save</button>
+        </form>
+      </div>
+      <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="budgetBarWrap">
+        <div class="bar-fill" id="budgetBar"></div>
+      </div>
+      <p class="hint" id="budgetText">Set a budget to track your spending.</p>
+    </section>
+
+    <!-- Add transaction -->
+    <section class="panel">
+      <h2>Add transaction</h2>
+      <form id="txForm" class="form-grid">
+        <div class="type-toggle" role="radiogroup" aria-label="Type">
+          <label><input type="radio" name="type" value="expense" checked><span>Expense</span></label>
+          <label><input type="radio" name="type" value="income"><span>Income</span></label>
+        </div>
+
+        <input type="text" id="desc" placeholder="Description (e.g. Lunch)" maxlength="60">
+        <input type="number" id="amount" placeholder="Amount (₹)" min="0.01" step="0.01" required>
+        <select id="category" aria-label="Category"></select>
+        <input type="date" id="date" required>
+
+        <button type="submit" class="btn-primary">Add</button>
+      </form>
+    </section>
+
+    <!-- Spending distribution -->
+    <section class="panel">
+      <h2>Spending by category</h2>
+      <div id="breakdown" class="breakdown"></div>
+    </section>
+
+    <!-- Transactions -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Transactions</h2>
+        <button type="button" id="exportBtn" class="btn-ghost">Export CSV</button>
+      </div>
+      <ul id="list" class="list"></ul>
+    </section>
+
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
