@@ -1,0 +1,7 @@
+{
+  "appId": "com.srikar.expensetracker",
+  "appName": "Expense Tracker",
+  "webDir": "www",
+  "bundledWebRuntime": false,
+  "backgroundColor": "#4f46e5"
+}

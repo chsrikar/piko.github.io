@@ -1,0 +1,16 @@
+node_modules/
+.DS_Store
+Thumbs.db
+
+# Android build artifacts (built in GitHub Actions, not locally)
+android/build/
+android/app/build/
+android/.gradle/
+android/local.properties
+android/captures/
+android/.cxx/
+
+# Secrets
+*.keystore
+*.jks
+

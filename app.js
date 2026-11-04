@@ -16,6 +16,47 @@
     maximumFractionDigits: 2,
   });
 
+  // ---------- Capacitor Native Check & Device Setup ----------
+  const isNative = () => !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+
+  function initNativeDevice() {
+    if (!isNative()) return;
+    const { StatusBar } = window.Capacitor.Plugins || {};
+    if (StatusBar) {
+      StatusBar.setBackgroundColor({ color: '#4f46e5' }).catch(() => {});
+      StatusBar.setStyle({ style: 'DARK' }).catch(() => {});
+    }
+  }
+
+  // ---------- In-Page Custom Modal Dialogs ----------
+  function showModal({ message, showCancel = false }) {
+    return new Promise((resolve) => {
+      const overlay = $('appModal');
+      const text = $('modalMsg');
+      const okBtn = $('modalOkBtn');
+      const cancelBtn = $('modalCancelBtn');
+
+      text.textContent = message;
+      cancelBtn.style.display = showCancel ? 'inline-block' : 'none';
+      overlay.hidden = false;
+
+      function cleanup(val) {
+        overlay.hidden = true;
+        okBtn.removeEventListener('click', onOk);
+        cancelBtn.removeEventListener('click', onCancel);
+        resolve(val);
+      }
+      function onOk() { cleanup(true); }
+      function onCancel() { cleanup(false); }
+
+      okBtn.addEventListener('click', onOk);
+      cancelBtn.addEventListener('click', onCancel);
+    });
+  }
+
+  const showAlert = (msg) => showModal({ message: msg, showCancel: false });
+  const showConfirm = (msg) => showModal({ message: msg, showCancel: true });
+
   // ---------- Storage ----------
   function load() {
     try {
@@ -27,21 +68,21 @@
           budget: Number(parsed.budget) || 0,
         };
       }
-    } catch (e) { /* ignore corrupted or blocked storage */ }
+    } catch (e) { /* storage blocked */ }
     return { transactions: [], budget: 0 };
   }
 
   function save() {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch (e) { /* storage full or blocked */ }
+    } catch (e) { /* storage full */ }
   }
 
   let state = load();
 
   // ---------- Helpers ----------
-  const todayStr = () => new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
-  const thisMonth = () => todayStr().slice(0, 7);                // YYYY-MM
+  const todayStr = () => new Date().toLocaleDateString('en-CA');
+  const thisMonth = () => todayStr().slice(0, 7);
   const currentType = () => document.querySelector('input[name="type"]:checked').value;
 
   function filtered() {
@@ -53,147 +94,117 @@
     return list.filter((t) => t.type === type).reduce((acc, t) => acc + t.amount, 0);
   }
 
-  // ---------- Rendering ----------
+  // ---------- UI Rendering ----------
   function renderCategories() {
-    const select = $('category');
-    select.innerHTML = '';
-    CATEGORIES[currentType()].forEach((c) => {
-      const opt = document.createElement('option');
-      opt.value = c;
-      opt.textContent = c;
-      select.appendChild(opt);
-    });
+    const catSelect = $('category');
+    const type = currentType();
+    catSelect.innerHTML = CATEGORIES[type]
+      .map((c) => `<option value="${c}">${c}</option>`)
+      .join('');
   }
 
   function renderSummary(list) {
-    const income = sum(list, 'income');
-    const expense = sum(list, 'expense');
-    $('totalIncome').textContent = money.format(income);
-    $('totalExpense').textContent = money.format(expense);
-    $('balance').textContent = money.format(income - expense);
+    const inc = sum(list, 'income');
+    const exp = sum(list, 'expense');
+    const bal = inc - exp;
+
+    $('totalIncome').textContent = money.format(inc);
+    $('totalExpense').textContent = money.format(exp);
+    $('balance').textContent = money.format(bal);
+    $('balance').style.color = bal < 0 ? 'var(--expense)' : 'var(--primary)';
   }
 
   function renderBudget(list) {
+    const exp = sum(list, 'expense');
+    const b = state.budget;
     const bar = $('budgetBar');
-    const wrap = $('budgetBarWrap');
     const text = $('budgetText');
-    const month = $('monthFilter').value;
-    const spent = sum(list, 'expense');
 
-    bar.className = 'bar-fill';
-
-    if (!month) {
+    if (!b) {
       bar.style.width = '0%';
-      wrap.setAttribute('aria-valuenow', 0);
-      text.textContent = 'Pick a month to compare spending with your budget.';
-      return;
-    }
-    if (!state.budget) {
-      bar.style.width = '0%';
-      wrap.setAttribute('aria-valuenow', 0);
-      text.textContent = 'Set a monthly budget to track your spending.';
+      bar.className = 'bar-fill';
+      text.textContent = 'Set a monthly budget to track spending.';
       return;
     }
 
-    const pct = (spent / state.budget) * 100;
-    bar.style.width = Math.min(pct, 100) + '%';
-    wrap.setAttribute('aria-valuenow', Math.round(Math.min(pct, 100)));
-    if (pct >= 100) bar.classList.add('over');
-    else if (pct >= 75) bar.classList.add('warn');
+    const pct = Math.round((exp / b) * 100);
+    bar.style.width = `${Math.min(pct, 100)}%`;
+    bar.className = 'bar-fill' + (pct >= 100 ? ' over' : pct >= 80 ? ' warn' : '');
 
-    const left = state.budget - spent;
-    text.textContent = left >= 0
-      ? `${money.format(spent)} of ${money.format(state.budget)} used (${Math.round(pct)}%). ${money.format(left)} left.`
-      : `Over budget by ${money.format(-left)} (${money.format(spent)} of ${money.format(state.budget)}).`;
+    const diff = b - exp;
+    if (diff >= 0) {
+      text.textContent = `${money.format(exp)} of ${money.format(b)} spent (${pct}%). ${money.format(diff)} remaining.`;
+    } else {
+      text.textContent = `${money.format(exp)} of ${money.format(b)} spent (${pct}%). Over by ${money.format(Math.abs(diff))}!`;
+    }
   }
 
   function renderBreakdown(list) {
-    const box = $('breakdown');
-    box.innerHTML = '';
+    const container = $('breakdown');
+    const expList = list.filter((t) => t.type === 'expense');
+    const total = sum(expList, 'expense');
 
-    const expenses = list.filter((t) => t.type === 'expense');
-    const total = sum(expenses, 'expense');
-
-    if (!expenses.length) {
-      box.innerHTML = '<p class="empty">No expenses to show yet.</p>';
+    if (!expList.length || total === 0) {
+      container.innerHTML = '<p class="empty">No expenses for this period.</p>';
       return;
     }
 
-    const byCat = {};
-    expenses.forEach((t) => { byCat[t.category] = (byCat[t.category] || 0) + t.amount; });
+    const map = {};
+    expList.forEach((t) => { map[t.category] = (map[t.category] || 0) + t.amount; });
 
-    Object.entries(byCat)
+    const rows = Object.entries(map)
       .sort((a, b) => b[1] - a[1])
-      .forEach(([cat, amount], i) => {
-        const pct = (amount / total) * 100;
-
-        const row = document.createElement('div');
-        row.className = 'break-row';
-
-        const top = document.createElement('div');
-        top.className = 'row-top';
-        const name = document.createElement('span');
-        name.textContent = cat;
-        const val = document.createElement('span');
-        val.textContent = `${money.format(amount)} · ${pct.toFixed(0)}%`;
-        top.append(name, val);
-
-        const bar = document.createElement('div');
-        bar.className = 'bar';
-        const fill = document.createElement('div');
-        fill.className = 'bar-fill';
-        fill.style.width = pct + '%';
-        fill.style.background = COLORS[i % COLORS.length];
-        bar.appendChild(fill);
-
-        row.append(top, bar);
-        box.appendChild(row);
-      });
+      .map(([cat, amt], i) => {
+        const pct = ((amt / total) * 100).toFixed(1);
+        const col = COLORS[i % COLORS.length];
+        return `
+          <div class="break-row">
+            <div class="row-top">
+              <span><strong>${cat}</strong> (${pct}%)</span>
+              <span>${money.format(amt)}</span>
+            </div>
+            <div class="bar">
+              <div class="bar-fill" style="width: ${pct}%; background: ${col};"></div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    container.innerHTML = rows;
   }
 
   function renderList(list) {
     const ul = $('list');
-    ul.innerHTML = '';
-
     if (!list.length) {
-      ul.innerHTML = '<li class="empty">No transactions yet. Add your first one above.</li>';
+      ul.innerHTML = '<li class="empty">No transactions yet.</li>';
       return;
     }
 
-    [...list]
-      .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id))
-      .forEach((t) => {
-        const li = document.createElement('li');
-        li.className = 'item';
+    const sorted = list.slice().sort((a, b) => (b.date > a.date ? 1 : b.date < a.date ? -1 : b.id - a.id));
 
-        const dot = document.createElement('span');
-        dot.className = 'dot ' + t.type;
+    ul.innerHTML = sorted.map((t) => `
+      <li class="item" data-id="${t.id}">
+        <span class="dot ${t.type}"></span>
+        <div class="item-main">
+          <div class="item-title">${escapeHtml(t.description || t.category)}</div>
+          <div class="item-meta">${t.date} &bull; ${t.category}</div>
+        </div>
+        <span class="amt ${t.type}">${t.type === 'expense' ? '-' : '+'}${money.format(t.amount)}</span>
+        <button type="button" class="del" aria-label="Delete">&times;</button>
+      </li>
+    `).join('');
 
-        const main = document.createElement('div');
-        main.className = 'item-main';
-        const title = document.createElement('div');
-        title.className = 'item-title';
-        title.textContent = t.description;
-        const meta = document.createElement('div');
-        meta.className = 'item-meta';
-        meta.textContent = `${t.category} · ${t.date}`;
-        main.append(title, meta);
-
-        const amt = document.createElement('span');
-        amt.className = 'amt ' + t.type;
-        amt.textContent = (t.type === 'income' ? '+' : '-') + money.format(t.amount);
-
-        const del = document.createElement('button');
-        del.className = 'del';
-        del.type = 'button';
-        del.title = 'Delete';
-        del.setAttribute('aria-label', 'Delete transaction');
-        del.textContent = '✕';
-        del.addEventListener('click', () => removeTransaction(t.id));
-
-        li.append(dot, main, amt, del);
-        ul.appendChild(li);
+    ul.querySelectorAll('.del').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const id = Number(e.currentTarget.closest('.item').dataset.id);
+        removeTransaction(id);
       });
+    });
+  }
+
+  function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, (s) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    })[s]);
   }
 
   function render() {
@@ -207,34 +218,32 @@
   // ---------- Actions ----------
   function addTransaction(e) {
     e.preventDefault();
-
     const amount = parseFloat($('amount').value);
-    if (!(amount > 0)) return;
-
+    const date = $('date').value;
     const category = $('category').value;
-    state.transactions.push({
-      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-      type: currentType(),
-      description: $('desc').value.trim() || category,
-      amount: Math.round(amount * 100) / 100,
-      category,
-      date: $('date').value || todayStr(),
-    });
-    save();
+    const description = $('desc').value.trim();
+    const type = currentType();
 
+    if (!amount || amount <= 0 || !date) return;
+
+    state.transactions.push({
+      id: Date.now(),
+      type,
+      amount,
+      category,
+      description,
+      date,
+    });
+
+    save();
+    render();
     $('desc').value = '';
     $('amount').value = '';
-
-    // Make sure the new entry is visible under the current month filter
-    const month = $('monthFilter').value;
-    if (month && !state.transactions[state.transactions.length - 1].date.startsWith(month)) {
-      $('monthFilter').value = state.transactions[state.transactions.length - 1].date.slice(0, 7);
-    }
-    render();
   }
 
-  function removeTransaction(id) {
-    if (!confirm('Delete this transaction?')) return;
+  async function removeTransaction(id) {
+    const ok = await showConfirm('Delete this transaction?');
+    if (!ok) return;
     state.transactions = state.transactions.filter((t) => t.id !== id);
     save();
     render();
@@ -248,19 +257,49 @@
     render();
   }
 
-  function exportCsv() {
+  // ---------- Native / Web CSV Export ----------
+  async function exportCsv() {
     const list = filtered();
-    if (!list.length) { alert('Nothing to export.'); return; }
+    if (!list.length) {
+      await showAlert('Nothing to export.');
+      return;
+    }
 
     const esc = (v) => `"${String(v).replace(/"/g, '""')}"`;
     const rows = [['Date', 'Type', 'Category', 'Description', 'Amount']]
       .concat(list.map((t) => [t.date, t.type, t.category, t.description, t.amount]));
-    const csv = rows.map((r) => r.map(esc).join(',')).join('\n');
+    const csvContent = rows.map((r) => r.map(esc).join(',')).join('\n');
+    const fileName = `transactions-${todayStr()}.csv`;
 
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+    // 1. Native Capacitor (Android)
+    if (isNative() && window.Capacitor?.Plugins?.Filesystem && window.Capacitor?.Plugins?.Share) {
+      const { Filesystem, Share } = window.Capacitor.Plugins;
+      try {
+        const written = await Filesystem.writeFile({
+          path: fileName,
+          data: csvContent,
+          directory: 'CACHE',
+          encoding: 'utf8'
+        });
+
+        await Share.share({
+          title: 'Export Transactions',
+          text: 'Here is my transaction export.',
+          url: written.uri,
+          dialogTitle: 'Share CSV file'
+        });
+        return;
+      } catch (err) {
+        console.error('Native export failed, falling back to browser download:', err);
+      }
+    }
+
+    // 2. Standard Web & PWA Fallback (Blob + anchor download)
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'transactions.csv';
+    a.download = fileName;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -283,6 +322,7 @@
     $('exportBtn').addEventListener('click', exportCsv);
 
     render();
+    initNativeDevice();
   }
 
   init();

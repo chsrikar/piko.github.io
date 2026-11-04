@@ -1,0 +1,18 @@
+{
+  "name": "piko",
+  "version": "1.0.0",
+  "description": "Expense Tracker PWA and Android App",
+  "main": "index.html",
+  "scripts": {
+    "sync": "cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/cli": "^7.0.0",
+    "@capacitor/core": "^7.0.0",
+    "@capacitor/filesystem": "^7.0.0",
+    "@capacitor/share": "^7.0.0",
+    "@capacitor/status-bar": "^7.0.0"
+  }
+}
+
